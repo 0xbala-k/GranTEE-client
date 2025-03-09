@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.7",
+    "@types/canvas-confetti": "^1.9.0",
     "axios": "^1.8.2",
+    "canvas-confetti": "^1.9.3",
     "ethers": "^6.13.5",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
