@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWeb3 } from '../Web3Context';
-import { Clock, Users, Settings } from 'lucide-react';
+import { Clock, Users, Settings, Trash2, AlertTriangle } from 'lucide-react';
 import { 
   getScholarshipsByCreator, 
   deleteScholarship,
@@ -9,6 +9,66 @@ import {
 import { Scholarship } from '../types';
 import { AddFundsModal } from '../components/AddFundsModal';
 import FundManagersModal from '../components/FundManagersModal';
+import { toast } from 'react-toastify';
+
+interface DeleteModalState {
+  isOpen: boolean;
+  scholarshipId: string;
+  scholarshipTitle: string;
+  isDeleting: boolean;
+}
+
+const DeleteConfirmationModal: React.FC<{
+  isOpen: boolean;
+  title: string;
+  isDeleting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}> = ({ isOpen, title, isDeleting, onClose, onConfirm }) => {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div className="p-6">
+          <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+            <AlertTriangle className="h-6 w-6 text-red-600" />
+          </div>
+          
+          <h3 className="text-xl font-bold text-center mb-2">Delete Scholarship</h3>
+          <p className="text-gray-600 text-center mb-6">
+            Are you sure you want to delete "{title}"? This action cannot be undone.
+          </p>
+          
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={onClose}
+              disabled={isDeleting}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            
+            <button
+              onClick={onConfirm}
+              disabled={isDeleting}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center"
+            >
+              {isDeleting ? (
+                <React.Fragment>
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Deleting...
+                </React.Fragment>
+              ) : (
+                <React.Fragment>Delete</React.Fragment>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ManageScholarships: React.FC = () => {
   const [scholarships, setScholarships] = useState<Scholarship[]>([]);
@@ -16,6 +76,12 @@ const ManageScholarships: React.FC = () => {
   const { account } = useWeb3();
   const [fundsModalScholarshipId, setFundsModalScholarshipId] = useState<string | null>(null);
   const [fundManagersModalScholarshipId, setFundManagersModalScholarshipId] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<DeleteModalState>({
+    isOpen: false,
+    scholarshipId: '',
+    scholarshipTitle: '',
+    isDeleting: false
+  });
 
   const fetchScholarships = async () => {
     setLoading(true);
@@ -43,15 +109,60 @@ const ManageScholarships: React.FC = () => {
     setFundManagersModalScholarshipId(scholarshipId);
   };
 
-  const handleDelete = async (scholarshipId: string) => {
-    if (!window.confirm('Are you sure you want to delete this scholarship?')) return;
+  const handleDeleteScholarship = async (id: string, title: string) => {
+    setDeleteModal({
+      isOpen: true,
+      scholarshipId: id,
+      scholarshipTitle: title,
+      isDeleting: false
+    });
+  };
+  
+  const confirmDelete = async () => {
+    setDeleteModal(prev => ({ ...prev, isDeleting: true }));
+    
     try {
-      await deleteScholarship(Number(scholarshipId));
-      alert('Scholarship deleted successfully.');
+      const toastId = toast.loading("Deleting scholarship...");
+      
+      await deleteScholarship(deleteModal.scholarshipId);
+      
+      toast.update(toastId, {
+        render: `Scholarship "${deleteModal.scholarshipTitle}" has been successfully deleted`,
+        type: "success",
+        isLoading: false,
+        autoClose: 3000,
+        closeButton: true
+      });
+      
       fetchScholarships();
+      
+      setDeleteModal({
+        isOpen: false,
+        scholarshipId: '',
+        scholarshipTitle: '',
+        isDeleting: false
+      });
+      
     } catch (error) {
-      console.error('Error deleting scholarship:', error);
-      alert('Error deleting scholarship.');
+      console.error("Error deleting scholarship:", error);
+      
+      toast.error(
+        <div className="flex items-start">
+          <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 h-5 w-5" />
+          <div>
+            <p className="font-medium">Failed to delete scholarship</p>
+            <p className="text-sm text-gray-500">
+              {error instanceof Error ? error.message : "Unknown error occurred"}
+            </p>
+          </div>
+        </div>,
+        {
+          autoClose: 5000,
+          closeButton: true
+        }
+      );
+      
+      setDeleteModal(prev => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -123,9 +234,10 @@ const ManageScholarships: React.FC = () => {
                         Add Funds
                       </button>
                       <button
-                        onClick={() => handleDelete(scholarship.id)}
-                        className="bg-red-600 text-white px-6 py-2 rounded-full font-semibold hover:bg-blue-700 transition-colors"
+                        onClick={() => handleDeleteScholarship(scholarship.id, scholarship.title)}
+                        className="bg-red-600 text-white px-6 py-2 rounded-full font-semibold hover:bg-red-700 transition-colors flex items-center justify-center"
                       >
+                        <Trash2 className="w-4 h-4 mr-2" />
                         Delete
                       </button>
                     </div>
@@ -149,6 +261,14 @@ const ManageScholarships: React.FC = () => {
           onClose={() => setFundManagersModalScholarshipId(null)}
         />
       )}
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteModal.isOpen}
+        title={deleteModal.scholarshipTitle}
+        isDeleting={deleteModal.isDeleting}
+        onClose={() => setDeleteModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 };

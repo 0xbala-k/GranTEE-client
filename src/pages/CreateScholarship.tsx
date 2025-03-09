@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useWeb3 } from '../Web3Context';
 import { Scholarship } from '../types';
 import { createScholarship, uploadScholarshipData } from '../services/helper';
+import { toast } from 'react-toastify';
 
 const CreateScholarship: React.FC = () => {
   const { account } = useWeb3();
@@ -47,16 +48,45 @@ const CreateScholarship: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Here we store the scholarship data in localStorage as an example.
-    // In production, you'd likely send this to a backend or blockchain.
-    const existingScholarships = localStorage.getItem('scholarships');
-    const scholarships = existingScholarships ? JSON.parse(existingScholarships) : [];
-    scholarships.push(scholarship);
-    localStorage.setItem('scholarships', JSON.stringify(scholarships));
-    alert('Scholarship created successfully!');
-
-    // Reset the form
-    setScholarship({
+    
+    // Show toast for processing
+    const pendingToast = toast.loading("Creating scholarship...");
+    
+    try {
+      // Store in localStorage
+      const existingScholarships = localStorage.getItem('scholarships');
+      const scholarships = existingScholarships ? JSON.parse(existingScholarships) : [];
+      scholarships.push(scholarship);
+      localStorage.setItem('scholarships', JSON.stringify(scholarships));
+      
+      // Create scholarship on blockchain
+      toast.update(pendingToast, { 
+        render: "Creating scholarship on blockchain...", 
+        type: "info", 
+        isLoading: true 
+      });
+      
+      await createScholarship();
+      
+      // Upload scholarship data to backend
+      toast.update(pendingToast, { 
+        render: "Uploading scholarship data...", 
+        type: "info", 
+        isLoading: true 
+      });
+      
+      await uploadScholarshipData(scholarship);
+      
+      // Show success toast
+      toast.update(pendingToast, { 
+        render: "Scholarship created successfully!", 
+        type: "success", 
+        isLoading: false,
+        autoClose: 5000
+      });
+      
+      // Reset the form
+      setScholarship({
         id: '',
         title: '',
         description: '',
@@ -66,13 +96,15 @@ const CreateScholarship: React.FC = () => {
         requirements: [],
         balance: 0,
         creator: account||"",
-    });
-
-    try{
-        await createScholarship();
-        uploadScholarshipData(scholarship)
-    }catch(error){
-        console.log("Error creating scholarship: ", error);
+      });
+    } catch(error) {
+      console.log("Error creating scholarship: ", error);
+      toast.update(pendingToast, { 
+        render: `Error creating scholarship: ${error instanceof Error ? error.message : String(error)}`, 
+        type: "error", 
+        isLoading: false,
+        autoClose: 5000
+      });
     }
   };
 
@@ -125,17 +157,17 @@ const CreateScholarship: React.FC = () => {
 
         {/* Amount */}
         <div>
-          <label htmlFor="amount" className="block mb-1 font-medium">
+          <label htmlFor="maxAmountPerApplicant" className="block mb-1 font-medium">
             Max Amount Per Applicant
           </label>
           <input
-            id="amount"
-            name="amount"
-            type="text"
+            id="maxAmountPerApplicant"
+            name="maxAmountPerApplicant"
+            type="number"
             value={scholarship.maxAmountPerApplicant}
             onChange={handleChange}
             className="w-full border border-gray-300 px-3 py-2 rounded"
-            placeholder="e.g., $1000"
+            placeholder="e.g., 1000"
             required
           />
         </div>

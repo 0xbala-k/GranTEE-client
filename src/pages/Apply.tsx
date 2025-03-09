@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Clock, Users } from 'lucide-react';
 import { useWeb3 } from '../Web3Context';
 import { Scholarship } from '../types';
-import { applyScholarship, getScholarshipById, invokeAgent } from '../services/helper';
+import { applyScholarship, getScholarshipById, invokeAgent, getApplications } from '../services/helper';
+import { toast } from 'react-toastify';
 
 export function Apply() {
   const { account } = useWeb3();
@@ -11,55 +12,150 @@ export function Apply() {
   const navigate = useNavigate();
   const [essay, setEssay] = useState('');
   const [scholarship, setScholarship] = useState<Scholarship | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [alreadyApplied, setAlreadyApplied] = useState(false);
 
   useEffect(() => {
+    if (!account) {
+      toast.error("Please connect your wallet to apply for scholarships");
+      navigate('/scholarships');
+      return;
+    }
+
     if (scholarshipId) {
+      checkAlreadyApplied();
       fetchScholarship();
     } else {
       navigate('/scholarships');
     }
-  }, [scholarshipId, navigate]);
+  }, [scholarshipId, navigate, account]);
+
+  const checkAlreadyApplied = async () => {
+    try {
+      const applications = await getApplications();
+      const hasApplied = applications.some(app => app.scholarshipId === Number(scholarshipId));
+      
+      if (hasApplied) {
+        setAlreadyApplied(true);
+        toast.info("You have already applied to this scholarship.", { 
+          autoClose: 5000,
+          onClose: () => navigate('/applications') 
+        });
+        setTimeout(() => {
+          navigate('/applications');
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Error checking application status:', error);
+    }
+  };
 
   const fetchScholarship = async () => {
+    setLoading(true);
     try {
+      toast.info("Loading scholarship details...");
       const found = await getScholarshipById(Number(scholarshipId));
       if (found) {
         setScholarship(found);
+        toast.success("Scholarship details loaded");
       } else {
+        toast.error("Scholarship not found");
         navigate('/scholarships');
       }
     } catch (error) {
       console.error('Error fetching scholarship:', error);
+      toast.error(`Error loading scholarship: ${error instanceof Error ? error.message : String(error)}`);
+      navigate('/scholarships');
+    } finally {
+      setLoading(false);
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    try{
-      applyScholarship(Number(scholarshipId), {essay:essay});
-    }
-    catch(error){
-      console.log("Error: ",error);
-    }
-    console.log('Form submitted:', { scholarshipId, essay });
+    
+    // Create a loading toast that we'll update throughout the process
+    const applicationToast = toast.loading("Submitting your application...");
+    
+    try {
+      // Apply for scholarship
+      await applyScholarship(Number(scholarshipId), {essay:essay});
+      toast.update(applicationToast, {
+        render: "Application submitted successfully!",
+        type: "success",
+        isLoading: false,
+        autoClose: false // Keep this visible while the agent processes
+      });
+      
+      console.log('Form submitted:', { scholarshipId, essay });
 
-    try{
-      console.log("Invoking agent....")
-      invokeAgent(
+      // Invoke agent for processing
+      toast.update(applicationToast, {
+        render: "Processing your application...",
+        type: "info",
+        isLoading: true
+      });
+      
+      console.log("Invoking agent....");
+      await invokeAgent(
         Number(scholarshipId),
         {essay:essay},
         account?account:""
-      )
-    } catch(error){
-      console.log("Error invoking agent: ",error)
+      );
+      
+      toast.update(applicationToast, {
+        render: "Application processed successfully!",
+        type: "success",
+        isLoading: false,
+        autoClose: 5000
+      });
+      
+      // Clear the essay field
+      setEssay("");
+      
+      // Add a small delay before navigating
+      setTimeout(() => {
+        navigate('/applications');
+      }, 2000);
+      
+    } catch(error) {
+      console.log("Error: ", error);
+      
+      // Check if it's the "already applied" error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Already applied to this scholarship')) {
+        toast.update(applicationToast, {
+          render: "You have already applied to this scholarship.",
+          type: "info",
+          isLoading: false,
+          autoClose: 5000
+        });
+        
+        // Navigate to applications
+        setTimeout(() => {
+          navigate('/applications');
+        }, 2000);
+      } else {
+        toast.update(applicationToast, {
+          render: `Error submitting application: ${errorMessage}`,
+          type: "error",
+          isLoading: false,
+          autoClose: 5000
+        });
+      }
     }
-
-    setEssay("");
   };
 
-  if (!account) {
+  if (!account || alreadyApplied) {
     return null;
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <p>Loading scholarship details...</p>
+      </div>
+    );
   }
 
   if (!scholarship) {
