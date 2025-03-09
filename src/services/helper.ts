@@ -33,9 +33,9 @@ interface ApplicationData{
 
 enum ApplicationStatus {
     Pending = 0,
-    Approved = 1,
-    Rejected = 2,
-    Cancelled = 3,
+    Reviewed = 1,
+    Accepted = 2,
+    Rejected = 3,
   }
 
 interface Application {
